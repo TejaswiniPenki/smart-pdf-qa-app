@@ -1,6 +1,9 @@
 # app.py
 import os
 import streamlit as st
+from typing import Dict, List, Union
+import tempfile
+
 from langgraph.graph import StateGraph, END
 from langchain_core.runnables import RunnableLambda
 from langchain_core.documents import Document
@@ -12,7 +15,6 @@ from langchain.retrievers import ParentDocumentRetriever
 from langchain.storage import InMemoryStore
 from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-import tempfile
 
 # ------------------- SETUP -------------------
 api_key = st.secrets["GOOGLE_API_KEY"] if "GOOGLE_API_KEY" in st.secrets else st.text_input("Enter your Google API Key:", type="password")
@@ -60,14 +62,12 @@ def create_parent_retriever(docs, splitter):
     return retriever
 
 # ------------------- LANGGRAPH -------------------
-@RunnableLambda
-def retrieve_chunk(state):
+def retrieve_chunk(state: Dict) -> Dict:
     query, retriever = state["question"], state["retriever"]
     docs = retriever.get_relevant_documents(query)
     return {"docs": docs, **state}
 
-@RunnableLambda
-def generate_answer(state):
+def generate_answer(state: Dict) -> Dict:
     prompt = PromptTemplate.from_template("""
     You are a helpful assistant. Use only the following context to answer.
 
@@ -85,13 +85,14 @@ def generate_answer(state):
     response = chain.invoke({"context": context, "question": state["question"]})
     return {"answer": response.content, **state}
 
-builder = StateGraph()
-builder.add_node("Retrieve", retrieve_chunk)
-builder.add_node("Generate", generate_answer)
-builder.set_entry_point("Retrieve")
-builder.add_edge("Retrieve", "Generate")
-builder.set_finish_point("Generate")
-graph = builder.compile()
+# Define the graph state schema
+graph_builder = StateGraph(Dict[str, Union[str, ParentDocumentRetriever, List[Document]]])
+graph_builder.add_node("Retrieve", RunnableLambda(retrieve_chunk))
+graph_builder.add_node("Generate", RunnableLambda(generate_answer))
+graph_builder.set_entry_point("Retrieve")
+graph_builder.add_edge("Retrieve", "Generate")
+graph_builder.set_finish_point("Generate")
+graph = graph_builder.compile()
 
 # ------------------- STREAMLIT UI -------------------
 st.title("📄 Smart PDF QA with LangGraph")
