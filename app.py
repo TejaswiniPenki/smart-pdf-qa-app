@@ -74,7 +74,17 @@ def generate(state):
     result = qa_chain.run(input_documents=docs, question=query)
     return {"answer": result}
 
-builder = StateGraph()
+from langgraph.graph import StateGraph
+from typing import TypedDict, Annotated
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import Runnable
+
+# Define the expected state format
+class GraphState(TypedDict):
+    messages: Annotated[list[BaseMessage], Runnable]
+
+# Initialize StateGraph with the schema
+builder = StateGraph(GraphState)
 builder.add_node("retrieve", retrieve)
 builder.add_node("generate", generate)
 builder.set_entry_point("retrieve")
