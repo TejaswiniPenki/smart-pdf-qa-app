@@ -1,5 +1,6 @@
 streamlit
 langchain
+langchain-community
 langgraph
 faiss-cpu
 PyPDF2
