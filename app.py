@@ -3,7 +3,7 @@ import os
 import tempfile
 
 from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader
-from langchain_community.document_loaders.unstructured import UnstructuredPDFLoader
+from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import GoogleGenerativeAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
