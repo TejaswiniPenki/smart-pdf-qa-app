@@ -2,34 +2,35 @@ import streamlit as st
 import os
 import tempfile
 
-from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader
-from langchain_community.document_loaders import UnstructuredPDFLoader
+from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader, UnstructuredPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
-from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from langchain.retrievers import ParentDocumentRetriever
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains.question_answering import load_qa_chain
 
 from langgraph.graph import StateGraph, END
+from typing import TypedDict, Annotated
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import Runnable
 
-# Set API key
+# UI: API Key input
 genai_api_key = st.text_input("Enter your Google Generative AI API Key", type="password")
 if not genai_api_key:
     st.stop()
 
 os.environ["GOOGLE_API_KEY"] = genai_api_key
 
-# Upload PDF
+# UI: File uploader
 uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
 if not uploaded_file:
     st.stop()
 
-# Save uploaded file
+# Save uploaded file to a temp location
 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
     tmp_file.write(uploaded_file.read())
     tmp_pdf_path = tmp_file.name
 
-# Try different loaders
+# PDF Loader with fallback
 def load_pdf(path):
     try:
         return PyMuPDFLoader(path).load()
@@ -42,25 +43,24 @@ def load_pdf(path):
             except:
                 return []
 
+# Load and split PDF
 docs = load_pdf(tmp_pdf_path)
 if not docs:
     st.error("Failed to load PDF content.")
     st.stop()
 
-# Embeddings and splitting
+# Embeddings & Vector Store
 embedding = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-vectorstore = FAISS.from_documents(text_splitter.split_documents(docs), embedding)
+split_docs = text_splitter.split_documents(docs)
+vectorstore = FAISS.from_documents(split_docs, embedding)
 retriever = vectorstore.as_retriever()
 
-# QA chain
-from langchain.chains.question_answering import load_qa_chain
-from langchain_google_genai import ChatGoogleGenerativeAI
+# QA Chain
 llm = ChatGoogleGenerativeAI(model="gemini-pro")
-
 qa_chain = load_qa_chain(llm, chain_type="stuff")
 
-# LangGraph
+# LangGraph State Functions
 def retrieve(state):
     query = state["question"]
     docs = retriever.get_relevant_documents(query)
@@ -74,16 +74,13 @@ def generate(state):
     result = qa_chain.run(input_documents=docs, question=query)
     return {"answer": result}
 
-from langgraph.graph import StateGraph
-from typing import TypedDict, Annotated
-from langchain_core.messages import BaseMessage
-from langchain_core.runnables import Runnable
-
-# Define the expected state format
+# LangGraph State Schema
 class GraphState(TypedDict):
-    messages: Annotated[list[BaseMessage], Runnable]
+    question: str
+    documents: list
+    answer: str
 
-# Initialize StateGraph with the schema
+# LangGraph Setup
 builder = StateGraph(GraphState)
 builder.add_node("retrieve", retrieve)
 builder.add_node("generate", generate)
@@ -92,7 +89,7 @@ builder.add_edge("retrieve", "generate")
 builder.add_edge("generate", END)
 graph = builder.compile()
 
-# QA interface
+# UI: Ask a question
 question = st.text_input("Ask a question about the PDF")
 if question:
     output = graph.invoke({"question": question})
