@@ -55,7 +55,7 @@ retriever = vectorstore.as_retriever()
 
 # QA chain
 from langchain.chains.question_answering import load_qa_chain
-from langchain.chat_models import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 llm = ChatGoogleGenerativeAI(model="gemini-pro")
 
 qa_chain = load_qa_chain(llm, chain_type="stuff")
