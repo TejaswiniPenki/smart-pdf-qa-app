@@ -5,7 +5,7 @@ from langgraph.graph import StateGraph, END
 from langchain_core.runnables import RunnableLambda
 from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import GoogleGenerativeAIEmbeddings
+from langchain_community.embeddings.google import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, UnstructuredPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
 from langchain.retrievers import ParentDocumentRetriever
