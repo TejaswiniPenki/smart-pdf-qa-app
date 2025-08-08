@@ -1,1 +1,1 @@
-# smart-pdf-qa-app
+This is a smart PDF QA app that uses LangGraph with Google Generative AI to answer questions from uploaded PDFs. It intelligently selects the best PDF loader and text splitter (like recursive, semantic, or agentic chunking) based on the PDF structure. The app dynamically builds a retrieval graph using advanced techniques like multi-vector indexing and parent-child retrievers, aiming for highly accurate answers from both text and tables. Upload your PDF, enter your API key, and ask anything — the model handles the rest.
