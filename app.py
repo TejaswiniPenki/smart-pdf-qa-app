@@ -15,7 +15,10 @@ import tempfile
 
 # Set your API key
 GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"] if "GOOGLE_API_KEY" in st.secrets else st.text_input("Enter your Google API key", type="password")
-os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
+if GOOGLE_API_KEY:
+    os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
+else:
+    st.warning("Please enter your Google API key to continue.")
 
 # Define app title
 st.title("📄 Smart PDF QA with LangGraph + Gemini + FAISS")
@@ -33,7 +36,7 @@ def process_pdf(file_path):
             documents = loader.load()
             if documents:
                 break
-        except:
+        except Exception as e:
             continue
     else:
         st.error("❌ Failed to load the PDF with available loaders.")
@@ -54,7 +57,7 @@ def process_pdf(file_path):
     return documents, vectorstore
 
 # Step 2: Process the PDF
-if uploaded_file:
+if uploaded_file and GOOGLE_API_KEY:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         tmp_file.write(uploaded_file.read())
         pdf_path = tmp_file.name
@@ -67,7 +70,6 @@ if uploaded_file:
 
         if question:
             retriever = vectorstore.as_retriever()
-            relevant_docs = retriever.get_relevant_documents(question)
 
             # Step 4: LangGraph State + LLM
             class GraphState(TypedDict):
@@ -84,7 +86,7 @@ if uploaded_file:
                 answer = qa_chain.run(input_documents=state["docs"], question=state["question"])
                 if "Answer is not available in the context" in answer or not answer.strip():
                     answer = "Answer is not available in the context."
-                return {"messages": [AIMessage(content=answer)]}
+                return {"messages": state["messages"] + [AIMessage(content=answer)]}
 
             builder = StateGraph(GraphState)
             builder.add_node("retrieve", retrieve)
@@ -95,7 +97,11 @@ if uploaded_file:
             graph = builder.compile()
 
             # Step 5: Run graph
-            inputs = {"question": question, "messages": []}
+            inputs = {
+                "question": question,
+                "docs": [],
+                "messages": [HumanMessage(content=question)]
+            }
             result = graph.invoke(inputs)
             final_answer = result["messages"][-1].content
             st.success("✅ Answer:")
