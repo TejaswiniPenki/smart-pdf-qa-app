@@ -5,7 +5,7 @@ import tempfile
 from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader
 from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain.retrievers import ParentDocumentRetriever
