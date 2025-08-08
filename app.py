@@ -79,7 +79,7 @@ if uploaded_file:
                 return {"docs": retriever.get_relevant_documents(state["question"])}
 
             def generate(state):
-                llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-latest")
+                llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
                 qa_chain = load_qa_chain(llm, chain_type="stuff")
                 answer = qa_chain.run(input_documents=state["docs"], question=state["question"])
                 if "Answer is not available in the context" in answer or not answer.strip():
