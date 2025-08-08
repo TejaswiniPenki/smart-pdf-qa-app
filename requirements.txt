@@ -1,11 +1,10 @@
 streamlit
-langchain
+langchain>=0.1.16
+langgraph>=0.0.38
 langchain-community
-langchain-google-genai
-langgraph
-google-generativeai
+PyPDF2
 pymupdf
-faiss-cpu
 unstructured
-pypdf
-pdfminer.six
+faiss-cpu
+google-generativeai
+python-dotenv
