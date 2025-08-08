@@ -1,0 +1,11 @@
+streamlit
+langchain
+langgraph
+faiss-cpu
+PyPDF2
+pymupdf
+pdfplumber
+unstructured
+tiktoken
+google-generativeai
+python-dotenv
