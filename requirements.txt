@@ -1,8 +1,9 @@
 streamlit
 langchain
+langchain-community
+langchain-google-genai
 langgraph
 google-generativeai
-langchain-community
 pymupdf
 faiss-cpu
 unstructured
