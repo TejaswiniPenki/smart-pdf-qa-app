@@ -1,7 +1,7 @@
 streamlit==1.26.0
 langchain==0.1.16
 langchain-community==0.0.33
-langgraph==0.0.38
+langgraph>=0.0.42
 langchain-google-genai==0.0.7
 faiss-cpu==1.7.4
 PyPDF2==3.0.1
