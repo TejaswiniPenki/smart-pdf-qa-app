@@ -29,33 +29,35 @@ if "doc_state" not in st.session_state:
 
 # ---------- Auto Loader Selection ----------
 def auto_select_loader_splitter(uploaded_file):
+    uploaded_file.seek(0)  # ✅ Fix: reset pointer before reading
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         pdf_path = tmp.name
 
     tables_found = False
-    text_found = False
-
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            if page.extract_tables():
-                tables_found = True
-                break
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                if page.extract_tables():
+                    tables_found = True
+                    break
+    except Exception:
+        tables_found = False
 
     try:
         docs_test = PyMuPDFLoader(pdf_path).load()
         text_found = any(d.page_content.strip() for d in docs_test)
-    except:
+    except Exception:
         text_found = False
 
     loader = "UnstructuredPDFLoader" if not text_found else "PyMuPDFLoader"
-    splitter = "Recursive"
 
     os.unlink(pdf_path)
-    return loader, splitter, tables_found
+    return loader, "Recursive", tables_found
 
 # ---------- Helpers ----------
 def load_pdf_document(uploaded_file, loader_choice):
+    uploaded_file.seek(0)  # ✅ Fix: reset pointer before reading
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         path = tmp.name
@@ -84,6 +86,7 @@ def semantic_chunking(chunks, embedder):
     ).fit(vectors).labels_
 
 def extract_tables_as_text(uploaded_file):
+    uploaded_file.seek(0)  # 🔹 Ensure pointer reset before reading tables
     table_texts = []
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
