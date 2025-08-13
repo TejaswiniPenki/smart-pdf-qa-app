@@ -33,7 +33,7 @@ if "doc_state" not in st.session_state:
 
 # ---------- Auto Loader Selection ----------
 def auto_select_loader_splitter(uploaded_file):
-    uploaded_file.seek(0)  # Reset pointer before reading
+    uploaded_file.seek(0)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         pdf_path = tmp.name
@@ -55,14 +55,13 @@ def auto_select_loader_splitter(uploaded_file):
         text_found = False
 
     loader = "UnstructuredPDFLoader" if not text_found else "PyMuPDFLoader"
-
     os.unlink(pdf_path)
     return loader, "Recursive", tables_found
 
 
 # ---------- Helpers ----------
 def load_pdf_document(uploaded_file, loader_choice):
-    uploaded_file.seek(0)  # Reset pointer before reading
+    uploaded_file.seek(0)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         path = tmp.name
@@ -93,23 +92,28 @@ def semantic_chunking(chunks, embedder):
     ).fit(vectors).labels_
 
 
+# ---------- Table Extraction (with DataFrames) ----------
 def extract_tables_as_text(uploaded_file):
-    uploaded_file.seek(0)  # Reset pointer before reading
+    uploaded_file.seek(0)
     table_texts = []
+    table_dfs = []
+    table_count = 0
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         path = tmp.name
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages:
             tables = page.extract_tables()
+            table_count += len(tables)
             for t in tables:
                 try:
                     df = pd.DataFrame(t[1:], columns=t[0])
+                    table_dfs.append(df)
                     table_texts.append(df.to_csv(index=False))
                 except:
                     pass
     os.unlink(path)
-    return table_texts
+    return table_texts, table_dfs, table_count
 
 
 def create_vector_db(text_chunks, embedder):
@@ -127,6 +131,34 @@ def classify_question(question):
     return any(kw.lower() in question.lower() for kw in table_keywords)
 
 
+# ---------- Special Query Detection ----------
+def is_table_count_question(q):
+    return any(k in q.lower() for k in [
+        "how many tables", "number of tables", "tables extracted", "total tables", "count of tables"
+    ])
+
+def is_row_request(q): return re.search(r"row\s+\d+", q.lower()) is not None
+def is_column_request(q): return re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()) is not None
+def is_pdf_summary_request(q): return "summarise pdf" in q.lower() or "summary of pdf" in q.lower()
+def is_table_summary_request(q): return re.search(r"(summarise|summary of)\s+table\s+\d+", q.lower()) is not None
+
+# ✅ NEW: table search detection & parser
+def is_table_search_request(q):
+    return re.search(r"(find|show)\s+rows?\s+where\s+", q.lower()) is not None
+
+def parse_table_search_request(q):
+    table_idx = 0
+    tm = re.search(r"table\s+(\d+)", q.lower())
+    if tm:
+        table_idx = int(tm.group(1)) - 1
+    m = re.search(r"where\s+([a-zA-Z0-9_ ]+)\s*=\s*([a-zA-Z0-9_ ]+)", q.lower())
+    if m:
+        col = m.group(1).strip()
+        val = m.group(2).strip()
+        return table_idx, col, val
+    return None, None, None
+
+
 # ---------- LangGraph Schema + Nodes ----------
 class GraphState(TypedDict):
     question: str
@@ -138,7 +170,6 @@ def node_semantic(state: GraphState, **kwargs):
     return {"question": state["question"], "docs": docs}
 
 def node_answer(state: GraphState, **kwargs):
-    # This node no longer returns 'answer' in state to prevent key conflicts
     model = kwargs.get("model")
     prompt = kwargs.get("prompt")
     if model and prompt:
@@ -161,24 +192,25 @@ if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("fi
     st.session_state.doc_state.clear()
     with st.spinner("🔍 Processing PDF..."):
         os.environ["GOOGLE_API_KEY"] = api_key
-
         loader_choice, _, has_tables = auto_select_loader_splitter(pdf_file)
         docs = load_pdf_document(pdf_file, loader_choice)
         chunks = split_text(docs)
-
-        table_texts = extract_tables_as_text(pdf_file) if has_tables else []
+        if has_tables:
+            table_texts, table_dfs, table_count = extract_tables_as_text(pdf_file)
+        else:
+            table_texts, table_dfs, table_count = [], [], 0
         all_chunks = chunks + table_texts
-
         embedder = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
         clusters = semantic_chunking(all_chunks, embedder)
         faiss_db = create_vector_db(all_chunks, embedder)
-
         st.session_state.doc_state = {
             "file_name": pdf_file.name,
             "faiss_db": faiss_db,
             "embedder": embedder,
             "chunks": all_chunks,
-            "clusters": clusters
+            "clusters": clusters,
+            "table_count": table_count,
+            "table_dfs": table_dfs
         }
 
 
@@ -186,12 +218,82 @@ if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("fi
 if question and api_key and st.session_state.doc_state:
     state_data = st.session_state.doc_state
 
+    # table count
+    if is_table_count_question(question):
+        c = state_data.get("table_count", 0)
+        st.subheader("Answer")
+        st.write(f"There are {c} tables extracted from the PDF." if c else "No tables were detected in the PDF.")
+        st.stop()
+
+    # row request
+    if is_row_request(question) and state_data.get("table_dfs"):
+        m = re.search(r"row\s+(\d+)", question.lower()); row_idx = int(m.group(1))-1
+        table_idx = 0; tm = re.search(r"table\s+(\d+)", question.lower())
+        if tm: table_idx = int(tm.group(1))-1
+        try:
+            row_data = state_data["table_dfs"][table_idx].iloc[row_idx]
+            st.subheader("Answer"); st.write(row_data.to_dict())
+        except: st.write("Requested row not found.")
+        st.stop()
+
+    # column request
+    if is_column_request(question) and state_data.get("table_dfs"):
+        m = re.search(r"column\s+([a-zA-Z0-9_ ]+)", question.lower()); col = m.group(1).strip()
+        table_idx = 0; tm = re.search(r"table\s+(\d+)", question.lower())
+        if tm: table_idx = int(tm.group(1))-1
+        try:
+            col_data = state_data["table_dfs"][table_idx][col]
+            st.subheader("Answer"); st.write(col_data.tolist())
+        except: st.write("Requested column not found.")
+        st.stop()
+
+    # ✅ NEW: table search request
+    if is_table_search_request(question) and state_data.get("table_dfs"):
+        t_idx, col, val = parse_table_search_request(question)
+        if col and val and 0 <= t_idx < len(state_data["table_dfs"]):
+            df = state_data["table_dfs"][t_idx]
+            try:
+                matches = df[df[col].astype(str).str.lower() == val.lower()]
+                st.subheader(f"Rows in Table {t_idx+1} where {col} = {val}")
+                if not matches.empty:
+                    st.write(matches.to_dict(orient="records"))
+                else:
+                    st.write("No matching rows found.")
+            except KeyError:
+                st.write(f"Column '{col}' not found in Table {t_idx+1}.")
+        else:
+            st.write("Could not parse table search query properly.")
+        st.stop()
+
+    # PDF summary
+    if is_pdf_summary_request(question):
+        model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
+        prompt = PromptTemplate(template="Summarise the following PDF content:\n\n{context}", input_variables=["context"])
+        chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+        summary = chain({"input_documents": [], "context": "\n".join(state_data["chunks"])}, return_only_outputs=True).get("output_text", "")
+        st.subheader("PDF Summary"); st.write(summary)
+        st.stop()
+
+    # Table summary
+    if is_table_summary_request(question) and state_data.get("table_dfs"):
+        tm = re.search(r"table\s+(\d+)", question.lower()); t_idx = int(tm.group(1))-1
+        if 0 <= t_idx < len(state_data["table_dfs"]):
+            csv_text = state_data["table_dfs"][t_idx].to_csv(index=False)
+            model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
+            prompt = PromptTemplate(template="Summarise the following table:\n\n{context}", input_variables=["context"])
+            chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+            summary = chain({"input_documents": [], "context": csv_text}, return_only_outputs=True).get("output_text", "")
+            st.subheader(f"Summary of Table {t_idx+1}"); st.write(summary)
+        else:
+            st.write("Table not found.")
+        st.stop()
+
+    # ----- Original vector search QA -----
     prompt_template = (
         "Answer using ONLY the provided context.\n"
         "If not found, reply 'Answer is not available in the context.'\n\n"
         "Context:\n{context}\nQuestion:\n{question}\n\nAnswer:"
     )
-
     model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
     graph = build_graph()
@@ -202,7 +304,6 @@ if question and api_key and st.session_state.doc_state:
     init_state = {"question": adjusted_query, "docs": []}
     graph.invoke(init_state, {"db": state_data["faiss_db"], "model": model, "prompt": prompt})
 
-    # Compute answer after graph execution
     chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
     docs = state_data["faiss_db"].similarity_search(adjusted_query, k=6)
     if is_table_question:
@@ -212,7 +313,6 @@ if question and api_key and st.session_state.doc_state:
 
     st.subheader("Answer")
     st.write(answer)
-
     if show_context:
         st.subheader("Retrieved Context")
         st.write(docs)
