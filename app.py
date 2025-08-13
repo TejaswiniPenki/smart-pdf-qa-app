@@ -125,7 +125,6 @@ def is_pdf_summary_request(q):
     return "summarise pdf" in ql or "summary of pdf" in ql or "pdf summary" in ql
 def is_table_summary_request(q):
     return bool(re.search(r"(summarise|summary of)\s+table\s+\d+", q.lower()))
-# keyword table search
 def is_table_search_request(q):
     return re.search(r"(find|show)\s+rows?\s+where\s+", q.lower()) is not None
 def parse_table_search_request(q):
@@ -153,8 +152,7 @@ def node_answer(state: GraphState, **kwargs):
     model = kwargs.get("model"); prompt = kwargs.get("prompt")
     if model and prompt:
         chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-        _ = chain({"input_documents": state["docs"], "question": state["question"]},
-                  return_only_outputs=True)
+        _ = chain({"input_documents": state["docs"], "question": state["question"]}, return_only_outputs=True)
     return {}
 
 def build_graph():
@@ -194,7 +192,6 @@ if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("fi
 # ---------- QA ----------
 if question and api_key and st.session_state.doc_state:
     state_data = st.session_state.doc_state
-    # special cases
     if is_table_count_question(question):
         c = state_data.get("table_count", 0)
         st.subheader("Answer"); st.write(f"There are {c} tables extracted from the PDF." if c else "No tables detected.")
@@ -246,7 +243,7 @@ if question and api_key and st.session_state.doc_state:
             st.write("Table not found.")
         st.stop()
 
-    # default vector QA
+    # ----- Default vector QA (FIXED CONTEXT PASSING) -----
     prompt_template = (
         "Answer using ONLY the provided context.\n"
         "If not found, reply 'Answer is not available in the context.'\n\n"
@@ -271,6 +268,7 @@ if question and api_key and st.session_state.doc_state:
     st.subheader("Answer"); st.write(answer)
     if show_context:
         st.subheader("Retrieved Context"); st.write(docs)
+
 elif not pdf_file:
     st.warning("📂 Please upload a PDF.")
 elif not api_key:
