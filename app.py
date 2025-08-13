@@ -100,6 +100,17 @@ def create_vector_db(text_chunks, embedder):
     return FAISS.from_texts(text_chunks, embedding=embedder)
 
 
+# ---------- Question Classification ----------
+def classify_question(question):
+    table_keywords = [
+        "table", "data", "list", "percentage", "amount", "year",
+        "GDP", "population", "rate", "value", "total", "figure", "count"
+    ]
+    if re.search(r"\b\d{4}\b", question) or "%" in question:
+        return True
+    return any(kw.lower() in question.lower() for kw in table_keywords)
+
+
 # ---------- Special Query Detection ----------
 def is_table_count_question(q):
     ql = q.lower()
