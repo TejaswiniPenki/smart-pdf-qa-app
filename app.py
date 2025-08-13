@@ -6,13 +6,16 @@ import pandas as pd
 import re
 from sklearn.cluster import AgglomerativeClustering
 
+from typing_extensions import TypedDict
+from langgraph.graph import StateGraph, START, END
+
 from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, UnstructuredPDFLoader
-from langgraph.graph import StateGraph
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS  # ✅ updated import as per deprecation
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
+
 
 # ---------- Streamlit Setup ----------
 st.set_page_config(page_title="LangGraph PDF QA", page_icon="📄", layout="wide")
@@ -27,9 +30,10 @@ show_context = st.sidebar.checkbox("Show retrieved context for debugging")
 if "doc_state" not in st.session_state:
     st.session_state.doc_state = {}
 
+
 # ---------- Auto Loader Selection ----------
 def auto_select_loader_splitter(uploaded_file):
-    uploaded_file.seek(0)  # ✅ Fix: reset pointer before reading
+    uploaded_file.seek(0)  # ✅ Fix
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         pdf_path = tmp.name
@@ -55,9 +59,10 @@ def auto_select_loader_splitter(uploaded_file):
     os.unlink(pdf_path)
     return loader, "Recursive", tables_found
 
+
 # ---------- Helpers ----------
 def load_pdf_document(uploaded_file, loader_choice):
-    uploaded_file.seek(0)  # ✅ Fix: reset pointer before reading
+    uploaded_file.seek(0)  # ✅ Fix
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         path = tmp.name
@@ -72,10 +77,12 @@ def load_pdf_document(uploaded_file, loader_choice):
     os.unlink(path)
     return docs
 
+
 def split_text(documents):
     text = " ".join([doc.page_content for doc in documents])
     splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
     return splitter.split_text(text)
+
 
 def semantic_chunking(chunks, embedder):
     vectors = embedder.embed_documents(chunks)
@@ -85,8 +92,9 @@ def semantic_chunking(chunks, embedder):
         n_clusters=min(len(chunks)//5, 12)
     ).fit(vectors).labels_
 
+
 def extract_tables_as_text(uploaded_file):
-    uploaded_file.seek(0)  # 🔹 Ensure pointer reset before reading tables
+    uploaded_file.seek(0)  # ✅ Fix
     table_texts = []
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
@@ -103,8 +111,10 @@ def extract_tables_as_text(uploaded_file):
     os.unlink(path)
     return table_texts
 
+
 def create_vector_db(text_chunks, embedder):
     return FAISS.from_texts(text_chunks, embedding=embedder)
+
 
 # ---------- Question Classification ----------
 def classify_question(question):
@@ -116,21 +126,37 @@ def classify_question(question):
         return True
     return any(kw.lower() in question.lower() for kw in table_keywords)
 
-# ---------- Graph Nodes ----------
-def node_semantic(q, db):
-    return db.similarity_search(q, k=6)
 
-def node_answer(docs, q, model, prompt):
-    return load_qa_chain(model, chain_type="stuff", prompt=prompt)(
-        {"input_documents": docs, "question": q},
-        return_only_outputs=True
-    )
+# ---------- LangGraph Schema + Nodes ----------
+class GraphState(TypedDict):
+    question: str
+    docs: list
+    answer: str
+
+
+def node_semantic(state: GraphState, db):
+    docs = db.similarity_search(state["question"], k=6)
+    return {"question": state["question"], "docs": docs, "answer": state.get("answer", "")}
+
+
+def node_answer(state: GraphState, model, prompt):
+    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+    result = chain({"input_documents": state["docs"], "question": state["question"]}, return_only_outputs=True)
+    return {"question": state["question"], "docs": state["docs"], "answer": result.get("output_text", "")}
+
 
 def build_graph():
-    g = StateGraph()
-    g.add_node("semantic", node_semantic)
-    g.add_node("answer", node_answer)
-    return g
+    builder = StateGraph(GraphState)
+
+    builder.add_node("semantic", node_semantic)
+    builder.add_node("answer", node_answer)
+
+    builder.add_edge(START, "semantic")
+    builder.add_edge("semantic", "answer")
+    builder.add_edge("answer", END)
+
+    return builder.compile()
+
 
 # ---------- Process PDF Once ----------
 if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("file_name")):
@@ -157,9 +183,10 @@ if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("fi
             "clusters": clusters
         }
 
+
 # ---------- QA ----------
 if question and api_key and st.session_state.doc_state:
-    state = st.session_state.doc_state
+    state_data = st.session_state.doc_state
 
     prompt_template = (
         "Answer using ONLY the provided context.\n"
@@ -174,14 +201,18 @@ if question and api_key and st.session_state.doc_state:
     is_table_question = classify_question(question)
     adjusted_query = "[TABLE PRIORITY] " + question if is_table_question else question
 
-    docs = graph.run("semantic", adjusted_query, state["faiss_db"])
+    # Init state for graph execution
+    init_state = {"question": adjusted_query, "docs": [], "answer": ""}
+
+    # Run graph with provided runtime arguments
+    result_state = graph.invoke(init_state, {"db": state_data["faiss_db"], "model": model, "prompt": prompt})
+
+    answer = result_state["answer"]
+    docs = result_state["docs"]
 
     if is_table_question:
         table_docs = [d for d in docs if "," in d.page_content and "\n" in d.page_content]
         docs = table_docs + [d for d in docs if d not in table_docs]
-
-    response = graph.run("answer", docs, question, model, prompt)
-    answer = response.get("output_text", "").strip()
 
     st.subheader("Answer")
     st.write(answer)
