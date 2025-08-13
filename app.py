@@ -12,7 +12,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, UnstructuredPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_community.vectorstores import FAISS  # ✅ updated import as per deprecation
+from langchain_community.vectorstores import FAISS  # updated as per deprecation warning
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 
@@ -33,7 +33,7 @@ if "doc_state" not in st.session_state:
 
 # ---------- Auto Loader Selection ----------
 def auto_select_loader_splitter(uploaded_file):
-    uploaded_file.seek(0)  # ✅ Fix
+    uploaded_file.seek(0)  # Reset pointer before reading
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         pdf_path = tmp.name
@@ -62,7 +62,7 @@ def auto_select_loader_splitter(uploaded_file):
 
 # ---------- Helpers ----------
 def load_pdf_document(uploaded_file, loader_choice):
-    uploaded_file.seek(0)  # ✅ Fix
+    uploaded_file.seek(0)  # Reset pointer before reading
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         path = tmp.name
@@ -94,7 +94,7 @@ def semantic_chunking(chunks, embedder):
 
 
 def extract_tables_as_text(uploaded_file):
-    uploaded_file.seek(0)  # ✅ Fix
+    uploaded_file.seek(0)  # Reset pointer before reading
     table_texts = []
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
@@ -128,33 +128,26 @@ def classify_question(question):
 
 
 # ---------- LangGraph Schema + Nodes ----------
+# Removed 'answer' to prevent duplicate state key error
 class GraphState(TypedDict):
     question: str
     docs: list
-    answer: str
-
 
 def node_semantic(state: GraphState, db):
     docs = db.similarity_search(state["question"], k=6)
-    return {"question": state["question"], "docs": docs, "answer": state.get("answer", "")}
-
+    return {"question": state["question"], "docs": docs}
 
 def node_answer(state: GraphState, model, prompt):
-    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-    result = chain({"input_documents": state["docs"], "question": state["question"]}, return_only_outputs=True)
-    return {"question": state["question"], "docs": state["docs"], "answer": result.get("output_text", "")}
-
+    # The state does not hold 'answer', we compute later
+    return {}
 
 def build_graph():
     builder = StateGraph(GraphState)
-
     builder.add_node("semantic", node_semantic)
     builder.add_node("answer", node_answer)
-
     builder.add_edge(START, "semantic")
     builder.add_edge("semantic", "answer")
     builder.add_edge("answer", END)
-
     return builder.compile()
 
 
@@ -201,18 +194,16 @@ if question and api_key and st.session_state.doc_state:
     is_table_question = classify_question(question)
     adjusted_query = "[TABLE PRIORITY] " + question if is_table_question else question
 
-    # Init state for graph execution
-    init_state = {"question": adjusted_query, "docs": [], "answer": ""}
+    init_state = {"question": adjusted_query, "docs": []}
+    graph.invoke(init_state, {"db": state_data["faiss_db"], "model": model, "prompt": prompt})
 
-    # Run graph with provided runtime arguments
-    result_state = graph.invoke(init_state, {"db": state_data["faiss_db"], "model": model, "prompt": prompt})
-
-    answer = result_state["answer"]
-    docs = result_state["docs"]
-
+    # Compute answer after graph execution
+    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+    docs = state_data["faiss_db"].similarity_search(adjusted_query, k=6)
     if is_table_question:
         table_docs = [d for d in docs if "," in d.page_content and "\n" in d.page_content]
         docs = table_docs + [d for d in docs if d not in table_docs]
+    answer = chain({"input_documents": docs, "question": question}, return_only_outputs=True).get("output_text", "")
 
     st.subheader("Answer")
     st.write(answer)
