@@ -12,7 +12,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, UnstructuredPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_community.vectorstores import FAISS  # updated as per deprecation warning
+from langchain_community.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 
@@ -128,17 +128,22 @@ def classify_question(question):
 
 
 # ---------- LangGraph Schema + Nodes ----------
-# Removed 'answer' to prevent duplicate state key error
 class GraphState(TypedDict):
     question: str
     docs: list
 
-def node_semantic(state: GraphState, db):
-    docs = db.similarity_search(state["question"], k=6)
+def node_semantic(state: GraphState, **kwargs):
+    db = kwargs.get("db")
+    docs = db.similarity_search(state["question"], k=6) if db else []
     return {"question": state["question"], "docs": docs}
 
-def node_answer(state: GraphState, model, prompt):
-    # The state does not hold 'answer', we compute later
+def node_answer(state: GraphState, **kwargs):
+    # This node no longer returns 'answer' in state to prevent key conflicts
+    model = kwargs.get("model")
+    prompt = kwargs.get("prompt")
+    if model and prompt:
+        chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+        _ = chain({"input_documents": state["docs"], "question": state["question"]}, return_only_outputs=True)
     return {}
 
 def build_graph():
