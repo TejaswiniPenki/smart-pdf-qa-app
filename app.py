@@ -113,6 +113,26 @@ def parse_table_search_request(q):
     m = re.search(r"where\s+([a-zA-Z0-9_ ]+)\s*=\s*([a-zA-Z0-9_ ]+)", q.lower())
     return (table_idx, m.group(1).strip(), m.group(2).strip()) if m else (None, None, None)
 
+# --- NEW detectors for combined features ---
+def is_row_and_column_request(q):
+    return bool(re.search(r"row\s+\d+", q.lower()) and re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
+
+def is_column_where_request(q):
+    return bool(re.search(r"(display|show)\s+column\s+[a-zA-Z0-9_ ]+\s+where\s+", q.lower()))
+
+def parse_column_where_request(q):
+    table_idx = 0
+    tm = re.search(r"table\s+(\d+)", q.lower())
+    if tm:
+        table_idx = int(tm.group(1)) - 1
+    m = re.search(
+        r"(?:display|show)\s+column\s+([a-zA-Z0-9_ ]+)\s+where\s+([a-zA-Z0-9_ ]+)\s*=\s*([a-zA-Z0-9_ ]+)",
+        q.lower()
+    )
+    if m:
+        return table_idx, m.group(1).strip(), m.group(2).strip(), m.group(3).strip()
+    return None, None, None, None
+
 # ---------- LangGraph ----------
 class GraphState(TypedDict):
     question: str
@@ -122,8 +142,7 @@ def node_semantic(state: GraphState, **kwargs):
     docs = db.similarity_search(state["question"], k=6) if db else []
     return {"question": state["question"], "docs": docs}
 def node_answer(state: GraphState, **kwargs):
-    model = kwargs.get("model")
-    prompt = kwargs.get("prompt")
+    model = kwargs.get("model"); prompt = kwargs.get("prompt")
     if model and prompt:
         chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
         _ = chain({"input_documents": state["docs"], "question": state["question"]}, return_only_outputs=True)
@@ -132,9 +151,7 @@ def build_graph():
     b = StateGraph(GraphState)
     b.add_node("semantic", node_semantic)
     b.add_node("answer", node_answer)
-    b.add_edge(START, "semantic")
-    b.add_edge("semantic", "answer")
-    b.add_edge("answer", END)
+    b.add_edge(START, "semantic"); b.add_edge("semantic", "answer"); b.add_edge("answer", END)
     return b.compile()
 
 # ---------- Process PDF ----------
@@ -157,21 +174,60 @@ if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("fi
 if question and api_key and st.session_state.doc_state:
     data = st.session_state.doc_state
 
-    # Special cases
+    # Row + Column single cell lookup
+    if is_row_and_column_request(question) and data.get("table_dfs"):
+        rm = re.search(r"row\s+(\d+)", question.lower())
+        cm = re.search(r"column\s+([a-zA-Z0-9_ ]+)", question.lower())
+        if rm and cm:
+            row_idx = int(rm.group(1)) - 1
+            col = cm.group(1).strip()
+            table_idx = 0
+            tm = re.search(r"table\s+(\d+)", question.lower())
+            if tm:
+                table_idx = int(tm.group(1)) - 1
+            try:
+                value = data["table_dfs"][table_idx].iloc[row_idx][col]
+                st.subheader("Answer")
+                st.write(value)
+            except:
+                st.write("Requested row/column not found.")
+        st.stop()
+
+    # Column WHERE filter (conditional column display)
+    if is_column_where_request(question) and data.get("table_dfs"):
+        t_idx, target_col, filter_col, filter_val = parse_column_where_request(question)
+        if all([target_col, filter_col, filter_val]) and 0 <= t_idx < len(data["table_dfs"]):
+            df = data["table_dfs"][t_idx]
+            try:
+                matches = df[df[filter_col].astype(str).str.lower() == filter_val.lower()]
+                if target_col in df.columns:
+                    st.subheader(f"{target_col} values where {filter_col} = {filter_val} (Table {t_idx+1})")
+                    st.write(matches[target_col].tolist())
+                else:
+                    st.write(f"Column '{target_col}' not found in Table {t_idx+1}.")
+            except KeyError:
+                st.write(f"Column '{filter_col}' not found in Table {t_idx+1}.")
+        else:
+            st.write("Could not parse 'display column where' query properly.")
+        st.stop()
+
+    # Existing special cases
     if is_table_count_question(question):
         st.subheader("Answer"); st.write(f"There are {data['table_count']} tables." if data["table_count"] else "No tables detected."); st.stop()
     if is_row_request(question) and data["table_dfs"]:
         m = re.search(r"row\s+(\d+)", question.lower()); row_idx = int(m.group(1))-1
-        tidx = 0; tm = re.search(r"table\s+(\d+)", question.lower())
+        tidx = 0; tm = re.search(r"table\s+(\d+)", question.lower()); 
         if tm: tidx = int(tm.group(1))-1
         try: st.subheader("Answer"); st.write(data["table_dfs"][tidx].iloc[row_idx].to_dict())
-        except: st.write("Requested row not found."); st.stop()
+        except: st.write("Requested row not found.")
+        st.stop()
     if is_column_request(question) and data["table_dfs"]:
         m = re.search(r"column\s+([a-zA-Z0-9_ ]+)", question.lower()); col = m.group(1).strip()
         tidx = 0; tm = re.search(r"table\s+(\d+)", question.lower())
         if tm: tidx = int(tm.group(1))-1
         try: st.subheader("Answer"); st.write(data["table_dfs"][tidx][col].tolist())
-        except: st.write("Requested column not found."); st.stop()
+        except: st.write("Requested column not found.")
+        st.stop()
     if is_table_search_request(question) and data["table_dfs"]:
         tidx, col, val = parse_table_search_request(question)
         if col and val and 0 <= tidx < len(data["table_dfs"]):
@@ -198,7 +254,7 @@ if question and api_key and st.session_state.doc_state:
         else: st.write("Table not found.")
         st.stop()
 
-    # Default QA
+    # Default QA for both table & non-table
     model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3, convert_system_message_to_human=True)
     graph = build_graph()
     is_tbl_q = classify_question(question)
