@@ -66,7 +66,7 @@ def semantic_chunking(chunks, embedder):
         return list(range(len(chunks)))
     return AgglomerativeClustering(n_clusters=min(len(chunks)//5, 12)).fit(vectors).labels_
 
-# ---------- UPDATED Robust Table Extraction ----------
+# ---------- Robust Table Extraction ----------
 def extract_tables_as_text(uploaded_file):
     uploaded_file.seek(0)
     table_texts, table_dfs, table_count = [], [], 0
@@ -97,7 +97,7 @@ def extract_tables_as_text(uploaded_file):
                     df = df.dropna(how="all").reset_index(drop=True)
                     df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
                     table_dfs.append(df)
-                    table_texts.append(df.to_csv(index=False))
+                    table_texts.append(df.to_markdown(index=False))
                 except Exception as e:
                     print("Table parse error:", e)
                     pass
@@ -114,26 +114,24 @@ def classify_question(question):
         return True
     return any(k.lower() in question.lower() for k in kws)
 
-# ---------- Special Query Detection ----------
+# ---------- Special Query Detection & Parsing ----------
 def is_table_count_question(q): 
     return any(k in q.lower() for k in ["how many tables", "number of tables","tables extracted","total tables","count of tables","tables in pdf","tables found"])
-
 def is_row_request(q): 
     return bool(re.search(r"row\s+\d+", q.lower()))
-
 def is_column_request(q): 
     return bool(re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
-
 def is_pdf_summary_request(q): 
     return any(x in q.lower() for x in ["summarise pdf", "summary of pdf", "pdf summary"])
-
 def is_table_summary_request(q): 
     return bool(re.search(r"(summarise|summary of)\s+table\s+\d+", q.lower()))
-
 def is_table_search_request(q): 
     return re.search(r"(find|show)\s+rows?\s+where\s+", q.lower()) is not None
+def is_row_and_column_request(q):
+    return bool(re.search(r"row\s+\d+", q.lower()) and re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
+def is_column_where_request(q):
+    return bool(re.search(r"(display|show)\s+column\s+[a-zA-Z0-9_ ]+\s+where\s+", q.lower()))
 
-# ---------- UPDATED Parse functions ----------
 def parse_table_search_request(q):
     table_idx = 0
     tm = re.search(r"table\s+(\d+)", q.lower())
@@ -146,13 +144,6 @@ def parse_table_search_request(q):
     if m_ct:
         return table_idx, m_ct.group(1).strip(), m_ct.group(2).strip(), "contains"
     return None, None, None, None
-
-# --- NEW detectors for combined features ---
-def is_row_and_column_request(q):
-    return bool(re.search(r"row\s+\d+", q.lower()) and re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
-
-def is_column_where_request(q):
-    return bool(re.search(r"(display|show)\s+column\s+[a-zA-Z0-9_ ]+\s+where\s+", q.lower()))
 
 def parse_column_where_request(q):
     table_idx = 0
@@ -227,7 +218,7 @@ if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("fi
 if question and api_key and st.session_state.doc_state:
     data = st.session_state.doc_state
 
-    # Row + Column single cell lookup
+    # Row + Column single cell lookup (Pandas for accuracy)
     if is_row_and_column_request(question) and data.get("table_dfs"):
         rm = re.search(r"row\s+(\d+)", question.lower())
         cm = re.search(r"column\s+([a-zA-Z0-9_ ]+)", question.lower())
@@ -241,12 +232,12 @@ if question and api_key and st.session_state.doc_state:
             try:
                 value = data["table_dfs"][table_idx].iloc[row_idx][col]
                 st.subheader("Answer")
-                st.write(value)
-            except:
+                st.write(f"(Cell Lookup) Value in row {row_idx+1}, column '{col}': {value}")
+            except Exception as e:
                 st.write("Requested row/column not found.")
         st.stop()
 
-    # UPDATED Column WHERE filter (conditional column display)
+    # Conditional column display (Pandas filter first)
     if is_column_where_request(question) and data.get("table_dfs"):
         t_idx, target_col, filter_col, filter_val, match_type = parse_column_where_request(question)
         if all([target_col, filter_col, filter_val]) and 0 <= t_idx < len(data["table_dfs"]):
@@ -283,7 +274,8 @@ if question and api_key and st.session_state.doc_state:
         if tm: tidx = int(tm.group(1))-1
         try:
             st.subheader("Answer")
-            st.write(data["table_dfs"][tidx].iloc[row_idx].to_dict())
+            row_dict = data["table_dfs"][tidx].iloc[row_idx].to_dict()
+            st.write(f"(Row Lookup) Row {row_idx+1} in Table {tidx+1}:\n{row_dict}")
         except:
             st.write("Requested row not found.")
         st.stop()
@@ -296,12 +288,14 @@ if question and api_key and st.session_state.doc_state:
         if tm: tidx = int(tm.group(1))-1
         try:
             st.subheader("Answer")
-            st.write(data["table_dfs"][tidx][col].tolist())
+            col_list = data["table_dfs"][tidx][col].tolist()
+            st.write(f"(Column Lookup) Values in column '{col}' of Table {tidx+1}:")
+            st.write(col_list)
         except:
             st.write("Requested column not found.")
         st.stop()
 
-    # UPDATED find/show rows where
+    # Conditional row display/filter (Pandas filter first)
     if is_table_search_request(question) and data["table_dfs"]:
         t_idx, col, val, match_type = parse_table_search_request(question)
         if col and val and 0 <= t_idx < len(data["table_dfs"]):
@@ -314,36 +308,56 @@ if question and api_key and st.session_state.doc_state:
                 else:
                     matches = pd.DataFrame()
                 st.subheader(f"Rows in Table {t_idx+1} where {col} {match_type} '{val}'")
-                st.write(matches.to_dict(orient="records") if not matches.empty else "No matches.")
+                st.write(matches.to_dict(orient="records") if not matches.empty else "No matching rows found.")
             except KeyError:
                 st.write(f"Column '{col}' not found.")
         else:
             st.write("Could not parse query.")
         st.stop()
 
+    # ----------- PDF Summary (robust/factual with Gemini) -----------
     if is_pdf_summary_request(question):
         model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3, convert_system_message_to_human=True)
-        doc = Document(page_content="\n".join(data["chunks"]))
-        ans = load_qa_chain(model, chain_type="stuff")({"input_documents": [doc], "question": "Summarise the PDF"}, return_only_outputs=True)
+        # Only use the first 10 chunks for summary
+        doc = Document(page_content="\n".join(data["chunks"][:10]))
+        summary_prompt = (
+            "You are a professional summarizer. "
+            "Create a concise summary of the following PDF content, only highlighting real topics and information. "
+            "Do not invent any facts. Be factual and brief."
+        )
+        ans = load_qa_chain(model, chain_type="map_reduce")(
+            {"input_documents": [doc], "question": summary_prompt},
+            return_only_outputs=True
+        )
         st.subheader("PDF Summary")
         st.write(ans.get("output_text", ""))
         st.stop()
 
+    # ----------- Table Summary (robust/factual with Gemini) -----------
     if is_table_summary_request(question) and data["table_dfs"]:
         tm = re.search(r"table\s+(\d+)", question.lower())
-        tidx = int(tm.group(1))-1
+        tidx = int(tm.group(1)) - 1
         if 0 <= tidx < len(data["table_dfs"]):
-            csv_text = data["table_dfs"][tidx].to_csv(index=False)
+            df = data["table_dfs"][tidx]
+            table_markdown = df.to_markdown(index=False)
+            doc = Document(page_content=f"Here is a data table in markdown format:\n{table_markdown}")
+            summary_prompt = (
+                "You are a data analyst. Summarize only facts from the following table. "
+                "List the row and column counts, any highest and lowest values, and major trends. "
+                "Do NOT make up any numbers or content. Be concise and factual."
+            )
             model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3, convert_system_message_to_human=True)
-            doc = Document(page_content=csv_text)
-            ans = load_qa_chain(model, chain_type="stuff")({"input_documents": [doc], "question": "Summarise this table"}, return_only_outputs=True)
+            ans = load_qa_chain(model, chain_type="map_reduce")(
+                {"input_documents": [doc], "question": summary_prompt},
+                return_only_outputs=True
+            )
             st.subheader(f"Summary of Table {tidx+1}")
             st.write(ans.get("output_text", ""))
         else:
             st.write("Table not found.")
         st.stop()
 
-    # Default QA
+    # ----------- Default Vector QA -----------
     model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3, convert_system_message_to_human=True)
     graph = build_graph()
     is_tbl_q = classify_question(question)
@@ -352,7 +366,7 @@ if question and api_key and st.session_state.doc_state:
     graph.invoke(init_state, {"db": data["faiss_db"], "model": model})
     docs = data["faiss_db"].similarity_search(adj_q, k=6)
     if is_tbl_q:
-        table_docs = [d for d in docs if "," in d.page_content and "\n" in d.page_content]
+        table_docs = [d for d in docs if "|" in d.page_content and "\n" in d.page_content]
         docs = table_docs + [d for d in docs if d not in table_docs]
     ans = load_qa_chain(model, chain_type="stuff")({"input_documents": docs, "question": question}, return_only_outputs=True)
     st.subheader("Answer")
