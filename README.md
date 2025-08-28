@@ -1,1 +1,1 @@
-# smart-pdf-qa-app
+This Streamlit app lets you upload a PDF and ask questions about its text and tables. Powered by LangGraph and Gemini, it features robust table extraction, smart clustering, and accurate data filters. Summaries and value lookups are handled with Pandas for reliability. Simply provide your API key and PDF to explore your documents interactively.
