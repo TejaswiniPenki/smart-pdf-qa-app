@@ -11,41 +11,18 @@ from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, Uns
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
-from langchain_core.chains.combine_documents import load_qa_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.docstore.document import Document
-
-
 
 # ---------- Streamlit Setup ----------
 st.set_page_config(page_title="LangGraph PDF QA", page_icon="📄", layout="wide")
 st.title("📄 LangGraph PDF QA")
 st.markdown("Upload a PDF and ask questions — answering from both theory text and tables.")
 
-# ---------- API Key Setup ----------
-GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", "")
-VERTEX_API_KEY = st.secrets.get("VERTEX_API_KEY", "")
-PROJECT_ID = st.secrets.get("PROJECT_ID", "")
-LOCATION = st.secrets.get("LOCATION", "")
-
-if GOOGLE_API_KEY:
-    os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
-else:
-    st.error("❌ GOOGLE_API_KEY not found in Streamlit Secrets. Please add it in Settings → Secrets.")
-    st.stop()
-
-# ---------- Sidebar Inputs ----------
+api_key = st.sidebar.text_input("Google API key:", type="password")
 pdf_file = st.sidebar.file_uploader("Upload PDF", type=["pdf"])
 question = st.sidebar.text_area("Ask a question:")
 show_context = st.sidebar.checkbox("Show retrieved context for debugging")
-
-st.sidebar.markdown("### 🔑 API Key Status")
-if GOOGLE_API_KEY:
-    st.sidebar.success("Gemini API Key Loaded ✅")
-else:
-    st.sidebar.error("Gemini API Key Missing ❌")
-if VERTEX_API_KEY:
-    st.sidebar.info("Vertex AI Key Detected ⚙️")
-
 if "doc_state" not in st.session_state:
     st.session_state.doc_state = {}
 
@@ -61,10 +38,7 @@ def auto_select_loader_splitter(uploaded_file):
     except Exception:
         text_found = False
     loader = "UnstructuredPDFLoader" if not text_found else "PyMuPDFLoader"
-    try:
-        os.unlink(pdf_path)
-    except PermissionError:
-        pass
+    os.unlink(pdf_path)
     return loader, "Recursive", True
 
 # ---------- Helpers ----------
@@ -79,10 +53,7 @@ def load_pdf_document(uploaded_file, loader_choice):
         docs = PyMuPDFLoader(path).load()
     else:
         docs = UnstructuredPDFLoader(path).load()
-    try:
-        os.unlink(path)
-    except PermissionError:
-        pass
+    os.unlink(path)
     return docs
 
 def split_text(documents):
@@ -126,74 +97,13 @@ def extract_tables_as_text(uploaded_file):
                     df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
                     table_dfs.append(df)
                     table_texts.append(df.to_markdown(index=False))
-                except Exception as e:
-                    print("Table parse error:", e)
+                except Exception:
                     pass
-    try:
-        os.unlink(path)
-    except PermissionError:
-        pass
+    os.unlink(path)
     return table_texts, table_dfs, table_count
 
 def create_vector_db(text_chunks, embedder):
     return FAISS.from_texts(text_chunks, embedding=embedder)
-
-# ---------- Question Classification ----------
-def classify_question(question):
-    kws = ["table", "data", "list", "percentage", "amount", "year", "GDP", "population", "rate", "value", "total", "figure", "count"]
-    if re.search(r"\b\d{4}\b", question) or "%" in question:
-        return True
-    return any(k.lower() in question.lower() for k in kws)
-
-# ---------- Special Query Detection & Parsing ----------
-def is_table_count_question(q): 
-    return any(k in q.lower() for k in ["how many tables", "number of tables","tables extracted","total tables","count of tables","tables in pdf","tables found"])
-def is_row_request(q): 
-    return bool(re.search(r"row\s+\d+", q.lower()))
-def is_column_request(q): 
-    return bool(re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
-def is_pdf_summary_request(q): 
-    return any(x in q.lower() for x in ["summarise pdf", "summary of pdf", "pdf summary"])
-def is_table_summary_request(q): 
-    return bool(re.search(r"(summarise|summary of)\s+table\s+\d+", q.lower()))
-def is_table_search_request(q): 
-    return re.search(r"(find|show)\s+rows?\s+where\s+", q.lower()) is not None
-def is_row_and_column_request(q):
-    return bool(re.search(r"row\s+\d+", q.lower()) and re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
-def is_column_where_request(q):
-    return bool(re.search(r"(display|show)\s+column\s+[a-zA-Z0-9_ ]+\s+where\s+", q.lower()))
-
-def parse_table_search_request(q):
-    table_idx = 0
-    tm = re.search(r"table\s+(\d+)", q.lower())
-    if tm: 
-        table_idx = int(tm.group(1)) - 1
-    m_eq = re.search(r"where\s+([a-zA-Z0-9_ ]+)\s*=\s*([a-zA-Z0-9_ ]+)", q.lower())
-    m_ct = re.search(r"where\s+([a-zA-Z0-9_ ]+)\s+contains\s+([a-zA-Z0-9_ ]+)", q.lower())
-    if m_eq:
-        return table_idx, m_eq.group(1).strip(), m_eq.group(2).strip(), "exact"
-    if m_ct:
-        return table_idx, m_ct.group(1).strip(), m_ct.group(2).strip(), "contains"
-    return None, None, None, None
-
-def parse_column_where_request(q):
-    table_idx = 0
-    tm = re.search(r"table\s+(\d+)", q.lower())
-    if tm:
-        table_idx = int(tm.group(1)) - 1
-    m_eq = re.search(
-        r"(?:display|show)\s+column\s+([a-zA-Z0-9_ ]+)\s+where\s+([a-zA-Z0-9_ ]+)\s*=\s*([a-zA-Z0-9_ ]+)",
-        q.lower()
-    )
-    m_ct = re.search(
-        r"(?:display|show)\s+column\s+([a-zA-Z0-9_ ]+)\s+where\s+([a-zA-Z0-9_ ]+)\s+contains\s+([a-zA-Z0-9_ ]+)",
-        q.lower()
-    )
-    if m_eq:
-        return table_idx, m_eq.group(1).strip(), m_eq.group(2).strip(), m_eq.group(3).strip(), "exact"
-    if m_ct:
-        return table_idx, m_ct.group(1).strip(), m_ct.group(2).strip(), m_ct.group(3).strip(), "contains"
-    return None, None, None, None, None
 
 # ---------- LangGraph ----------
 class GraphState(TypedDict):
@@ -207,10 +117,10 @@ def node_semantic(state: GraphState, **kwargs):
 
 def node_answer(state: GraphState, **kwargs):
     model = kwargs.get("model")
-    prompt = kwargs.get("prompt")
-    if model and prompt:
-        chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-        _ = chain({"input_documents": state["docs"], "question": state["question"]}, return_only_outputs=True)
+    docs = state["docs"]
+    if model and docs:
+        qa_chain = create_stuff_documents_chain(model)
+        _ = qa_chain.invoke({"input_documents": docs, "question": state["question"]})
     return {}
 
 def build_graph():
@@ -223,9 +133,10 @@ def build_graph():
     return b.compile()
 
 # ---------- Process PDF ----------
-if pdf_file and GOOGLE_API_KEY and (pdf_file.name != st.session_state.doc_state.get("file_name")):
+if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("file_name")):
     st.session_state.doc_state.clear()
     with st.spinner("🔍 Processing PDF..."):
+        os.environ["GOOGLE_API_KEY"] = api_key
         loader_choice, _, _ = auto_select_loader_splitter(pdf_file)
         docs = load_pdf_document(pdf_file, loader_choice)
         chunks = split_text(docs)
@@ -245,28 +156,22 @@ if pdf_file and GOOGLE_API_KEY and (pdf_file.name != st.session_state.doc_state.
         }
 
 # ---------- QA ----------
-if question and GOOGLE_API_KEY and st.session_state.doc_state:
+if question and api_key and st.session_state.doc_state:
     data = st.session_state.doc_state
-
-    # ----------- Default Vector QA -----------
-    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
+    model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3, convert_system_message_to_human=True)
     graph = build_graph()
-    is_tbl_q = classify_question(question)
-    adj_q = "[TABLE PRIORITY] " + question if is_tbl_q else question
+    adj_q = question
     init_state = {"question": adj_q, "docs": []}
-    graph.invoke(init_state, db=data["faiss_db"], model=model)
+    graph.invoke(init_state, {"db": data["faiss_db"], "model": model})
     docs = data["faiss_db"].similarity_search(adj_q, k=6)
-    if is_tbl_q:
-        table_docs = [d for d in docs if "|" in d.page_content and "\n" in d.page_content]
-        docs = table_docs + [d for d in docs if d not in table_docs]
-    ans = load_qa_chain(model, chain_type="stuff")({"input_documents": docs, "question": question}, return_only_outputs=True)
+    qa_chain = create_stuff_documents_chain(model)
+    ans = qa_chain.invoke({"input_documents": docs, "question": question})
     st.subheader("Answer")
-    st.write(ans.get("output_text", ""))
+    st.write(ans)
     if show_context:
         st.subheader("Retrieved Context")
         st.write(docs)
-
 elif not pdf_file:
     st.warning("📂 Please upload a PDF.")
-elif not GOOGLE_API_KEY:
-    st.warning("🔑 Please set your GOOGLE_API_KEY in Streamlit Secrets.")
+elif not api_key:
+    st.warning("🔑 Please enter your Google API key.")
