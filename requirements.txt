@@ -5,6 +5,7 @@ scikit-learn
 langchain
 langchain-community
 langchain-google-genai
+langchain-text-splitters
 langgraph
 faiss-cpu
 typing-extensions
