@@ -10,4 +10,3 @@ pandas==2.2.3
 pdfplumber==0.11.0
 scikit-learn==1.5.2
 typing-extensions>=4.9.0
-tiktoken==0.7.0
