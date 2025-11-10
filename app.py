@@ -11,8 +11,9 @@ from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, Uns
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
-from langchain_core.chains.combine_documents import load_qa_chain
+from langchain.chains.combine_documents.base import load_qa_chain
 from langchain.docstore.document import Document
+
 
 # ---------- Streamlit Setup ----------
 st.set_page_config(page_title="LangGraph PDF QA", page_icon="📄", layout="wide")
