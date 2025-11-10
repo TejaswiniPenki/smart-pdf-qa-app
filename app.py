@@ -11,7 +11,7 @@ from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, Uns
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
-from langchain_core.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.docstore.document import Document
 
 
