@@ -3,7 +3,7 @@ langchain-core==0.3.18
 langchain-community==0.3.7
 langchain-google-genai==2.0.1
 langchain-text-splitters==0.3.2
-langgraph==0.1.16
+langgraph==0.2.32
 faiss-cpu==1.9.0.post1
 streamlit==1.51.0
 pandas==2.2.3
