@@ -5,6 +5,7 @@ import pandas as pd
 import pdfplumber
 from typing import TypedDict
 from langchain_community.vectorstores import FAISS
+from langchain_community.document_loaders import UnstructuredPDFLoader, PyPDFLoader, PyMuPDFLoader
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
@@ -14,6 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document as LCDocument
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+
 
 # ---------- Streamlit Setup ----------
 st.set_page_config(page_title="LangGraph PDF QA", page_icon="📄", layout="wide")
