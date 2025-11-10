@@ -1,7 +1,3 @@
-streamlit>=1.36.0
-pandas>=2.0.0
-pdfplumber>=0.11.0
-scikit-learn>=1.3.0
 langchain>=1.0.5
 langchain-community>=0.4.1
 langchain-text-splitters>=0.2.0
@@ -10,3 +6,7 @@ langgraph>=0.0.40
 faiss-cpu>=1.7.4
 typing-extensions>=4.7.0
 tiktoken>=0.7.0
+streamlit>=1.36.0
+pandas>=2.0.0
+pdfplumber>=0.11.0
+scikit-learn>=1.3.0
