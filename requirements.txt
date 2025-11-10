@@ -1,10 +1,10 @@
 langchain==0.3.7
-langchain-core==0.3.15
+langchain-core==0.3.18
 langchain-community==0.3.7
 langchain-google-genai==1.0.3
 langchain-text-splitters==0.3.2
 langgraph==0.1.16
-faiss-cpu==1.8.0
+faiss-cpu==1.9.0.post1
 streamlit==1.51.0
 pandas==2.2.3
 pdfplumber==0.11.0
