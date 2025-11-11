@@ -11,8 +11,8 @@ pdfplumber==0.11.0
 scikit-learn==1.5.2
 textstat==0.7.4
 typing-extensions>=4.9.0
-unstructured==0.14.9          # ✅ Stable version with partition_pdf
-unstructured-inference==0.7.23 # ✅ Perfectly compatible
+unstructured==0.18.18          # ✅ Python 3.13 supported
+unstructured-inference==0.8.1   # ✅ Matches unstructured 0.18+
 pytesseract==0.3.13
 pillow==10.4.0
 pi_heif==0.18.0
