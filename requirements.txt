@@ -18,4 +18,6 @@ pillow==10.4.0
 pi_heif==0.18.0
 protobuf==5.28.3
 pdf2image==1.17.0
-pdfminer.six==20231228   
+pdfminer.six==20231228
+
+# rebuild trigger
