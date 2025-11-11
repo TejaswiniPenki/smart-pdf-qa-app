@@ -11,7 +11,7 @@ from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, Uns
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_classic.chains.question_answering import load_qa_chain
-from langchain.docstore.document import Document
+from langchain_classic.docstore.document import Document
 
 
 # -------- Dynamic Embedding/Model Selection --------
