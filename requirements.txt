@@ -16,7 +16,8 @@ unstructured-inference==0.8.1
 pytesseract==0.3.13
 pillow==10.4.0
 pi_heif==0.18.0
-# Compatibility pins to fix onnx/ml_dtypes crash
-onnxruntime==1.17.1
-onnx==1.15.0
-ml-dtypes==0.3.2
+
+# ✅ These work on Python 3.13
+onnxruntime==1.23.2
+onnx==1.19.0
+ml-dtypes==0.4.1
