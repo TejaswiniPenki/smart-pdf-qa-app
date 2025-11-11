@@ -10,8 +10,9 @@ from langgraph.graph import StateGraph, START, END
 from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, UnstructuredPDFLoader
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains.question_answering import load_qa_chain
+from langchain_classic.chains.question_answering import load_qa_chain
 from langchain.docstore.document import Document
+
 
 # -------- Dynamic Embedding/Model Selection --------
 def get_api_choice():
