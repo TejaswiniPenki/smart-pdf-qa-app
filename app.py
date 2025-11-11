@@ -1,3 +1,10 @@
+# --- FIX for pdfminer import error ---
+try:
+    import pdfminer
+    from pdfminer import psparser, pdfdocument, pdfpage, pdfinterp, pdfdevice
+except ImportError:
+    pass
+# --- END FIX ---
 import os
 import tempfile
 import streamlit as st
