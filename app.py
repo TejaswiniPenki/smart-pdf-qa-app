@@ -13,6 +13,14 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_classic.chains.question_answering import load_qa_chain
 from langchain_classic.docstore.document import Document
 
+# --- Add this snippet right here ---
+if "GCP_SERVICE_ACCOUNT_KEY_JSON" in st.secrets:
+    sa_json_str = st.secrets["GCP_SERVICE_ACCOUNT_KEY_JSON"]
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+        f.write(sa_json_str)
+        sa_path = f.name
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_path
+
 
 # -------- Dynamic Embedding/Model Selection --------
 def get_api_choice():
