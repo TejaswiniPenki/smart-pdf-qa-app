@@ -1,11 +1,12 @@
+streamlit
 langchain>=1.0.0
 langchain-community>=0.4.1
 langchain-text-splitters>=1.0.0
-streamlit
+langchain-classic>=1.0.0
+langchain-google-genai
+langchain-google-vertexai
 pdfplumber
 pandas
 scikit-learn
 PyPDF2
 PyMuPDF
-langchain-google-genai
-langchain-google-vertexai
