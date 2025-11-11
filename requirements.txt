@@ -9,10 +9,11 @@ streamlit==1.51.0
 pandas==2.2.3
 pdfplumber==0.11.0
 scikit-learn==1.5.2
-# Removed tiktoken to avoid Rust dependency
+# Removed tiktoken (requires Rust)
 textstat==0.7.4
 typing-extensions>=4.9.0
 unstructured==0.16.24
+unstructured-inference==0.7.36  # ✅ Required for PDF layout parsing
 pytesseract==0.3.13
 pillow==10.4.0
-pi_heif==0.18.0   # ✅ Required for unstructured PDF parsing
+pi_heif==0.18.0
