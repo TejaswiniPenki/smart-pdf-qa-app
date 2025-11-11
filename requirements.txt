@@ -1,9 +1,12 @@
+# --- Core Langchain Stack ---
 langchain==0.3.7
 langchain-core==0.3.18
 langchain-community==0.3.7
 langchain-google-genai==2.0.1
 langchain-text-splitters==0.3.2
 langgraph==0.2.32
+
+# --- PDF / AI Processing ---
 faiss-cpu==1.9.0.post1
 streamlit==1.51.0
 pandas==2.2.3
@@ -11,15 +14,15 @@ pdfplumber==0.11.0
 scikit-learn==1.5.2
 textstat==0.7.4
 typing-extensions>=4.9.0
-unstructured==0.18.18
-unstructured-inference==0.8.1
 pytesseract==0.3.13
 pillow==10.4.0
 pi_heif==0.18.0
-numpy==1.26.4
 
-# ✅ ONNX stack for Unstructured model inference on Python 3.13
-onnx==1.19.0
-onnxruntime==1.23.2
+# --- Unstructured for Tables & Layouts (✅ Python 3.13 compatible) ---
+unstructured==0.15.12
+unstructured-inference==0.9.5
+onnx==1.17.0
+onnxruntime==1.20.1
 ml-dtypes==0.5.0
+numpy>=2.1.0
 protobuf==5.29.0
