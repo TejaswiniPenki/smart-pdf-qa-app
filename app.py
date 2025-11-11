@@ -10,12 +10,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmb
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, END, START
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document as LCDocument
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-
+from sklearn.cluster import AgglomerativeClustering
 
 # ---------- Streamlit Setup ----------
 st.set_page_config(page_title="LangGraph PDF QA", page_icon="📄", layout="wide")
@@ -50,13 +50,18 @@ def load_pdf_document(uploaded_file, loader_choice):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(uploaded_file.read())
         path = tmp.name
-    if loader_choice == "PyPDFLoader":
-        docs = PyPDFLoader(path).load()
-    elif loader_choice == "PyMuPDFLoader":
-        docs = PyMuPDFLoader(path).load()
-    else:
-        docs = UnstructuredPDFLoader(path).load()
-    os.unlink(path)
+    try:
+        if loader_choice == "PyPDFLoader":
+            docs = PyPDFLoader(path).load()
+        elif loader_choice == "PyMuPDFLoader":
+            docs = PyMuPDFLoader(path).load()
+        else:
+            docs = UnstructuredPDFLoader(path).load()
+    except Exception as e:
+        st.error(f"❌ Error while loading PDF with {loader_choice}: {e}")
+        docs = []
+    finally:
+        os.unlink(path)
     return docs
 
 def split_text(documents):
@@ -138,25 +143,32 @@ def build_graph():
 # ---------- Process PDF ----------
 if pdf_file and api_key and (pdf_file.name != st.session_state.doc_state.get("file_name")):
     st.session_state.doc_state.clear()
-    with st.spinner("🔍 Processing PDF..."):
-        os.environ["GOOGLE_API_KEY"] = api_key
-        loader_choice, _, _ = auto_select_loader_splitter(pdf_file)
-        docs = load_pdf_document(pdf_file, loader_choice)
-        chunks = split_text(docs)
-        table_texts, table_dfs, table_count = extract_tables_as_text(pdf_file)
-        all_chunks = chunks + table_texts
-        embedder = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-        clusters = semantic_chunking(all_chunks, embedder)
-        faiss_db = create_vector_db(all_chunks, embedder)
-        st.session_state.doc_state = {
-            "file_name": pdf_file.name,
-            "faiss_db": faiss_db,
-            "embedder": embedder,
-            "chunks": all_chunks,
-            "clusters": clusters,
-            "table_count": table_count,
-            "table_dfs": table_dfs
-        }
+    try:
+        with st.spinner("🔍 Processing PDF... This may take a minute..."):
+            os.environ["GOOGLE_API_KEY"] = api_key
+            loader_choice, _, _ = auto_select_loader_splitter(pdf_file)
+            docs = load_pdf_document(pdf_file, loader_choice)
+            if not docs:
+                st.error("❌ No text extracted from the PDF.")
+            else:
+                chunks = split_text(docs)
+                table_texts, table_dfs, table_count = extract_tables_as_text(pdf_file)
+                all_chunks = chunks + table_texts
+                embedder = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+                clusters = semantic_chunking(all_chunks, embedder)
+                faiss_db = create_vector_db(all_chunks, embedder)
+                st.session_state.doc_state = {
+                    "file_name": pdf_file.name,
+                    "faiss_db": faiss_db,
+                    "embedder": embedder,
+                    "chunks": all_chunks,
+                    "clusters": clusters,
+                    "table_count": table_count,
+                    "table_dfs": table_dfs
+                }
+        st.success("✅ PDF processed successfully!")
+    except Exception as e:
+        st.error(f"❌ Error during PDF processing: {e}")
 
 # ---------- QA ----------
 if question and api_key and st.session_state.doc_state:
