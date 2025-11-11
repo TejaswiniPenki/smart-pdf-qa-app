@@ -7,9 +7,9 @@ import re
 from sklearn.cluster import AgglomerativeClustering
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
-from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader, UnstructuredPDFLoader
+from langchain.document_loaders import PyPDFLoader, PyMuPDFLoader, UnstructuredPDFLoader
+from langchain.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
 from langchain.docstore.document import Document
 
