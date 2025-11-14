@@ -21,7 +21,6 @@ if "GCP_SERVICE_ACCOUNT_KEY_JSON" in st.secrets:
         sa_path = f.name
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_path
 
-
 # -------- Dynamic Embedding/Model Selection --------
 def get_api_choice():
     secrets = st.secrets
@@ -34,14 +33,10 @@ def get_api_choice():
 
 def get_embedder(api_choice):
     if api_choice == "vertex":
-        # VertexAIEmbeddings requires vertex secrets
+        # VertexAIEmbeddings uses ADC now; no manual env vars needed here
         from langchain_google_vertexai import VertexAIEmbeddings
-        os.environ["VERTEX_API_KEY"] = st.secrets["VERTEX_API_KEY"]
-        os.environ["PROJECT_ID"] = st.secrets["PROJECT_ID"]
-        os.environ["LOCATION"] = st.secrets["LOCATION"]
         return VertexAIEmbeddings(model_name="gemini-embedding-001")
     elif api_choice == "gemini":
-        # GoogleGenerativeAIEmbeddings for Gemini API
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
         os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
         return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
@@ -52,7 +47,6 @@ def get_embedder(api_choice):
 def get_chat_model(api_choice):
     from langchain_google_genai import ChatGoogleGenerativeAI
     if api_choice == "vertex":
-        # Vertex API: Provide extra options if needed
         return ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             temperature=0.3,
