@@ -13,40 +13,6 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_classic.chains.question_answering import load_qa_chain
 from langchain_classic.docstore.document import Document
 
-import streamlit as st
-import json
-
-def diagnose_service_account_json(secret_key="GCP_SERVICE_ACCOUNT_KEY_JSON"):
-    if secret_key not in st.secrets:
-        st.error(f"Secret key '{secret_key}' not found in Streamlit secrets!")
-        st.stop()
-
-    sa_json_str = st.secrets[secret_key]
-
-    # Show raw string representation (including escape chars) of the beginning
-    preview_length = 500
-    st.write("Service Account JSON preview (repr, first 500 chars):")
-    st.code(repr(sa_json_str[:preview_length]))
-
-    # Try to parse JSON and catch errors
-    try:
-        json_obj = json.loads(sa_json_str)
-        st.success("Service Account JSON parsed successfully!")
-        st.write(f"JSON keys: {list(json_obj.keys())}")
-    except json.JSONDecodeError as e:
-        st.error(f"JSONDecodeError: {e}")
-        # Show error context excerpt for better insight
-        error_pos = e.pos
-        start = max(0, error_pos - 20)
-        end = min(len(sa_json_str), error_pos + 20)
-        st.write("Error context in JSON (with marker '^' at error position):")
-        excerpt = sa_json_str[start:end]
-        marker = " " * (error_pos - start) + "^"
-        st.code(excerpt + "\n" + marker)
-
-# Call the diagnostic function at app start for debugging
-diagnose_service_account_json()
-
 
 # --- Add this snippet right here ---
 if "GCP_SERVICE_ACCOUNT_KEY_JSON" in st.secrets:
