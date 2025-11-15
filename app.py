@@ -22,6 +22,27 @@ if "GCP_SERVICE_ACCOUNT_KEY_JSON" in st.secrets:
         sa_path = f.name
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_path
 
+# Gemini API test function
+def test_gemini_api_live():
+    if "GOOGLE_API_KEY" not in st.secrets:
+        st.error("GOOGLE_API_KEY missing in secrets!")
+        return
+    
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    try:
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            temperature=0.3,
+            api_key=api_key
+        )
+        prompt = "Say hello to me!"
+        response = llm.invoke(prompt)
+        st.success("Gemini API Response:")
+        st.write(response)
+    except Exception as e:
+        st.error(f"Error calling Gemini API: {e}")
+
 # -------- Dynamic Embedding/Model Selection --------
 def get_api_choice():
     secrets = st.secrets
@@ -34,7 +55,6 @@ def get_api_choice():
 
 def get_embedder(api_choice):
     if api_choice == "vertex":
-        # VertexAIEmbeddings uses ADC now; no manual env vars needed here
         from langchain_google_vertexai import VertexAIEmbeddings
         return VertexAIEmbeddings(model_name="gemini-embedding-001")
     elif api_choice == "gemini":
@@ -73,6 +93,11 @@ st.markdown("Upload a PDF and ask questions — answering from both theory text 
 pdf_file = st.sidebar.file_uploader("Upload PDF", type=["pdf"])
 question = st.sidebar.text_area("Ask a question:")
 show_context = st.sidebar.checkbox("Show retrieved context for debugging")
+
+# Gemini API test sidebar button
+if st.sidebar.button("Test Gemini API"):
+    test_gemini_api_live()
+
 if "doc_state" not in st.session_state:
     st.session_state.doc_state = {}
 
@@ -180,7 +205,7 @@ def is_table_search_request(q):
 def is_row_and_column_request(q):
     return bool(re.search(r"row\s+\d+", q.lower()) and re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
 def is_column_where_request(q):
-    return bool(re.search(r"(display|show)\s+column\s+[a-zA-Z0-9_ ]+\s+where\s+", q.lower()))
+    return bool(re.search(r"(display|show)\s+column\s+[a-zA-Z0-9_ ]]+\s+where\s+", q.lower()))
 
 def parse_table_search_request(q):
     table_idx = 0
@@ -267,6 +292,10 @@ if pdf_file and (pdf_file.name != st.session_state.doc_state.get("file_name")):
             "table_count": table_count,
             "table_dfs": table_dfs
         }
+
+# ---------- Sidebar button for Gemini API test ----------
+if st.sidebar.button("Test Gemini API"):
+    test_gemini_api_live()
 
 # ---------- QA ----------
 if question and st.session_state.doc_state:
