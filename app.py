@@ -53,11 +53,17 @@ def get_chat_model(api_choice):
             temperature=0.3,
             api_key=st.secrets["VERTEX_API_KEY"],
             project=st.secrets["PROJECT_ID"],
-            location=st.secrets["LOCATION"])
-    else:
+            location=st.secrets["LOCATION"]
+        )
+    elif api_choice == "gemini":
         return ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash", temperature=0.3,
-            api_key=st.secrets["GOOGLE_API_KEY"])
+            model="gemini-2.5-flash",
+            temperature=0.3,
+            api_key=st.secrets["GOOGLE_API_KEY"]
+        )
+    else:
+        st.error("No valid API choice detected")
+        st.stop()
 
 # ---------- Streamlit Setup ----------
 st.set_page_config(page_title="LangGraph PDF QA", page_icon="📄", layout="wide")
@@ -159,17 +165,17 @@ def classify_question(question):
     return any(k.lower() in question.lower() for k in kws)
 
 # ---------- Special Query Detection & Parsing ----------
-def is_table_count_question(q): 
+def is_table_count_question(q):
     return any(k in q.lower() for k in ["how many tables", "number of tables","tables extracted","total tables","count of tables","tables in pdf","tables found"])
-def is_row_request(q): 
+def is_row_request(q):
     return bool(re.search(r"row\s+\d+", q.lower()))
-def is_column_request(q): 
+def is_column_request(q):
     return bool(re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
-def is_pdf_summary_request(q): 
+def is_pdf_summary_request(q):
     return any(x in q.lower() for x in ["summarise pdf", "summary of pdf", "pdf summary"])
-def is_table_summary_request(q): 
+def is_table_summary_request(q):
     return bool(re.search(r"(summarise|summary of)\s+table\s+\d+", q.lower()))
-def is_table_search_request(q): 
+def is_table_search_request(q):
     return re.search(r"(find|show)\s+rows?\s+where\s+", q.lower()) is not None
 def is_row_and_column_request(q):
     return bool(re.search(r"row\s+\d+", q.lower()) and re.search(r"column\s+[a-zA-Z0-9_ ]+", q.lower()))
@@ -179,7 +185,7 @@ def is_column_where_request(q):
 def parse_table_search_request(q):
     table_idx = 0
     tm = re.search(r"table\s+(\d+)", q.lower())
-    if tm: 
+    if tm:
         table_idx = int(tm.group(1)) - 1
     m_eq = re.search(r"where\s+([a-zA-Z0-9_ ]+)\s*=\s*([a-zA-Z0-9_ ]+)", q.lower())
     m_ct = re.search(r"where\s+([a-zA-Z0-9_ ]+)\s+contains\s+([a-zA-Z0-9_ ]+)", q.lower())
